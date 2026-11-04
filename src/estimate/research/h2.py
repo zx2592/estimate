@@ -15,6 +15,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+import statsmodels.formula.api as smf
 
 from estimate.research.h1 import add_baselines, usable
 
@@ -134,4 +135,26 @@ def report(panel: pd.DataFrame, cache_dir: Path) -> pd.DataFrame:
     d["ebin"] = pd.qcut(d.entropy.rank(method="first"), 5, labels=[1, 2, 3, 4, 5])
     print(d.groupby("ebin", observed=True).agg(n=("up", "size"), mean_entropy=("entropy", "mean"),
                                               mean_abs_xret=("xret_cc", lambda s: s.abs().mean())).round(4).to_string())
+    robustness(d)
     return d
+
+
+def robustness(d: pd.DataFrame) -> None:
+    print("\n[Robustness] liquid subsets (USD traded in the 72h before entry)")
+    for name, s in [("vol72 top third", d[d.vol72_usd >= d.vol72_usd.quantile(2 / 3)]),
+                    ("vol72 >= $2k", d[d.vol72_usd >= 2000])]:
+        parts = []
+        for f in FEATURES:
+            rho, pv = stats.spearmanr(s[f], s.xret_cc)
+            parts.append(f"{f} {rho:+.3f} (p={pv:.2f})")
+        print(f"  {name} n={len(s)}: " + "; ".join(parts))
+    g = d.assign(up_gap=(d.xret_gap > 0).astype(int))
+    oos = walk_forward(g, "up_gap")
+    if len(oos):
+        print(f"  walk-forward on gap direction: OOS n={len(oos)} AUC={roc_auc_score(oos.up_gap, oos.prob):.4f}")
+
+    print("\n[Priced in?] xret_cc ~ yes * p0, HC3 standard errors")
+    m = smf.ols("xret_cc ~ yes * p0", data=d).fit(cov_type="HC3")
+    print(m.summary2().tables[1][["Coef.", "Std.Err.", "P>|z|"]].round(4).to_string())
+    b = d.assign(pbin=pd.cut(d.p0, [0, .5, .8, .9, 1.0], include_lowest=True))
+    print(b.groupby(["pbin", "yes"], observed=True).xret_cc.agg(["size", "mean"]).unstack().round(4).to_string())
