@@ -55,3 +55,49 @@ def test_yahoo_symbol_and_split_download():
     assert set(out) == {"SPY", "BRK-A"}
     assert list(out["SPY"].columns) == ["open", "high", "low", "close", "volume"]
     assert out["BRK-A"].loc["2026-11-03", "close"] == 2.5  # unadjusted-for-dividends Close, not Adj Close
+
+
+def _synthetic_chain(spot=100.0, days=7, skew=0.004):
+    """Chain priced with Black-Scholes and an IV smile that rises for lower strikes."""
+    from estimate.options import bs_delta, bs_price
+
+    asof = dt.date(2026, 11, 4)
+    exp = asof + dt.timedelta(days=days)
+    t = (days + 1) / 365
+    rows = []
+    for k in range(80, 121):
+        iv = 0.60 + skew * (spot - k)
+        for r in ("C", "P"):
+            px = bs_price(spot, k, t, iv, r)
+            rows.append(dict(expiry=exp, strike=float(k), right=r, bid=px * 0.98, ask=px * 1.02,
+                             iv=iv, delta=bs_delta(spot, k, t, iv, r), und=spot))
+    return pd.DataFrame(rows), asof
+
+
+def test_chain_features_on_synthetic_smile():
+    from estimate.options import chain_features
+
+    chain, asof = _synthetic_chain()
+    f = chain_features(chain, asof + dt.timedelta(days=1), asof)
+    assert f["k_atm"] == 100.0
+    assert abs(f["atm_iv"] - 0.60) < 1e-9
+    assert f["put_skew"] > 0 and f["rr25"] < 0  # downside smile
+    # ATM straddle ~ 0.8 * sigma * sqrt(t) of spot
+    assert abs(f["implied_move"] - 0.8 * 0.60 * (8 / 365) ** 0.5) < 0.01
+    assert f["ps_long_k"] == 100.0 and f["ps_short_k"] < 100.0
+    assert f["ps_cost_cross"] > f["ps_cost_mid"] > 0
+
+
+def test_put_spread_payoff():
+    from estimate.options import put_spread_payoff
+
+    assert put_spread_payoff(100, 95, 101) == 0
+    assert put_spread_payoff(100, 95, 97) == 3
+    assert put_spread_payoff(100, 95, 80) == 5
+
+
+def test_implied_vol_roundtrip():
+    from estimate.options import bs_price, implied_vol
+
+    px = bs_price(100, 95, 10 / 365, 0.7, "P")
+    assert abs(implied_vol(px, 100, 95, 10 / 365, "P") - 0.7) < 1e-6

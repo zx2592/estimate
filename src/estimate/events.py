@@ -78,3 +78,21 @@ def timing_from_et(ts_et: pd.Timestamp) -> tuple[dt.date, str]:
     if h < 16:
         return d, "DMH"
     return d, "AMC"
+
+
+def build_upcoming(raw_open_events: list[dict], today: dt.date, days: int = 10) -> pd.DataFrame:
+    """Open EPS markets reporting within `days`, with timing taken from the market endDate."""
+    from estimate.calendar import entry_and_reaction_days
+
+    rows = [r for r in map(parse_event, raw_open_events) if r and not r["resolved"]]
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df = df[(df.est_date >= today) & (df.est_date <= today + dt.timedelta(days=days))].copy()
+    end_et = pd.to_datetime(df.end_ts, unit="s", utc=True).dt.tz_convert(ET)
+    df["timing"] = [timing_from_et(t)[1] for t in end_et]
+    df["timing"] = df.timing.replace({"DMH": "BMO"})
+    days_ = [entry_and_reaction_days(d, t) for d, t in zip(df.est_date, df.timing)]
+    df["entry_date"] = [e for e, _ in days_]
+    df["reaction_date"] = [r for _, r in days_]
+    return df.sort_values(["entry_date", "ticker"]).reset_index(drop=True)

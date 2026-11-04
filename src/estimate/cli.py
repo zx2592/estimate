@@ -6,6 +6,10 @@
     python -m estimate.cli h1             # calibration vs base rates at the proper entry time
     python -m estimate.cli fetch-prices   # Yahoo Finance daily bars for every ticker + SPY
     python -m estimate.cli h2             # direction / magnitude tests
+    python -m estimate.cli upcoming       # open EPS markets reporting in the next days
+    python -m estimate.cli snapshot-options   # IBKR chain snapshot for events entering today (run ~15:45 ET)
+    python -m estimate.cli ibkr-vol-history   # IBKR 30-day IV / HV history for every ticker
+    python -m estimate.cli h7             # put-skew test on collected snapshots
 """
 from __future__ import annotations
 
@@ -96,6 +100,79 @@ def cmd_h2(_):
     report(pd.read_parquet(DATA / "panel.parquet"), PRICES)
 
 
+def cmd_upcoming(args):
+    from estimate.events import build_upcoming
+    raw = pm.fetch_earnings_events(closed=False)
+    (DATA / "raw").mkdir(parents=True, exist_ok=True)
+    (DATA / "raw" / "poly_earn_events_closed_false.json").write_text(json.dumps(raw))
+    up = build_upcoming(raw, dt.datetime.now(ET).date(), args.days)
+    up.to_parquet(DATA / "upcoming.parquet")
+    cols = ["ticker", "basis", "est_date", "timing", "entry_date", "reaction_date", "volume"]
+    print(up[cols].to_string(index=False) if len(up) else "no upcoming EPS markets")
+
+
+def cmd_snapshot_options(args):
+    from estimate.ingest import ibkr, yahoo
+    today = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(ET).date()
+    up = pd.read_parquet(DATA / "upcoming.parquet")
+    todo = up[up.entry_date == today]
+    out_dir = DATA / "options" / "snapshots" / str(today)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    todo = todo.drop_duplicates("ticker")  # GAAP and non-GAAP markets share one chain
+    print(f"{len(todo)} tickers enter on {today}; source={args.source}")
+    ib = ibkr.connect(args.host, args.port, args.client_id, args.market_data_type) if args.source == "ibkr" else None
+    try:
+        for ev in todo.itertuples():
+            f = out_dir / f"{ev.ticker}.parquet"
+            if f.exists():
+                continue
+            try:
+                if ib is not None:
+                    df = ibkr.snapshot_chain(ib, ev.ticker, ev.reaction_date)
+                else:
+                    df = yahoo.snapshot_chain(ev.ticker, ev.reaction_date)
+                df.assign(source=args.source).to_parquet(f)
+                print(f"  {ev.ticker}: {len(df)} contracts, {df.iv.notna().mean():.0%} with IV")
+            except Exception as err:  # noqa: BLE001
+                print(f"  {ev.ticker}: FAILED {err}")
+    finally:
+        if ib is not None:
+            ib.disconnect()
+
+
+def cmd_ibkr_vol_history(args):
+    from estimate.ingest import ibkr
+    tickers = sorted(set(pd.read_parquet(DATA / "events.parquet").ticker))
+    out_dir = DATA / "ibkr" / "vol"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ib = ibkr.connect(args.host, args.port, args.client_id, args.market_data_type)
+    try:
+        for t in tickers:
+            f = out_dir / f"{t}.parquet"
+            if f.exists():
+                continue
+            try:
+                ibkr.underlying_vol_history(ib, t).to_parquet(f)
+            except Exception as err:  # noqa: BLE001
+                print(f"  {t}: FAILED {err}")
+    finally:
+        ib.disconnect()
+
+
+def cmd_h7(_):
+    from estimate.research.h7 import evaluate, load_snapshot_features, report
+    panel = pd.read_parquet(DATA / "panel.parquet")
+    feats = load_snapshot_features(DATA / "options" / "snapshots", panel)
+    report(evaluate(panel, feats, PRICES) if len(feats) else pd.DataFrame())
+
+
+def _ibkr_args(p):
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=7497, help="TWS paper 7497, live 7496; Gateway 4002 / 4001")
+    p.add_argument("--client-id", type=int, default=17)
+    p.add_argument("--market-data-type", type=int, default=3, help="1 live, 3 delayed, 4 delayed-frozen")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="estimate")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -107,6 +184,18 @@ def main(argv=None):
     sub.add_parser("h1").set_defaults(fn=cmd_h1)
     sub.add_parser("fetch-prices").set_defaults(fn=cmd_fetch_prices)
     sub.add_parser("h2").set_defaults(fn=cmd_h2)
+    u = sub.add_parser("upcoming")
+    u.add_argument("--days", type=int, default=10)
+    u.set_defaults(fn=cmd_upcoming)
+    so = sub.add_parser("snapshot-options")
+    so.add_argument("--date", help="entry date, default today (ET)")
+    so.add_argument("--source", choices=["ibkr", "yahoo"], default="ibkr")
+    _ibkr_args(so)
+    so.set_defaults(fn=cmd_snapshot_options)
+    vh = sub.add_parser("ibkr-vol-history")
+    _ibkr_args(vh)
+    vh.set_defaults(fn=cmd_ibkr_vol_history)
+    sub.add_parser("h7").set_defaults(fn=cmd_h7)
     args = ap.parse_args(argv)
     args.fn(args)
 

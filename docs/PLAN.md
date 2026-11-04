@@ -59,7 +59,7 @@ H1 和 H2 是硬门槛。两者都不通过，项目转为"纯期权波动率策
 
 - 每日至少三次快照（开盘后、午间、收盘前），财报前一天和当天加密到每小时。
 - 每个合约的 bid / ask / last / IV / Greeks / OI / volume。
-- 候选来源：Polygon（有历史期权数据）、Tradier（免费沙盒）、ORATS（有历史 IV 与财报波动统计）、ThetaData、IBKR API。
+- 已选：IBKR API 前向采集建仓时点的期权链快照，Yahoo 作为免费备选。IBKR 不提供已到期期权的历史，需要历史回测时再考虑 ORATS 或 ThetaData。
 
 **行情**
 
