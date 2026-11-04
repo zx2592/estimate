@@ -5,7 +5,7 @@
 | 假设 | 状态 | 一句话结论 |
 |---|---|---|
 | H1 校准度 | **通过** | 建仓时点的 Polymarket 价格比"公司自身历史 beat 率"的 Brier 分数低 20% |
-| H2 方向预测力 | **待运行** | 代码已完成，等 Polygon 数据 |
+| H2 方向预测力 | **待运行** | 代码已完成，等 Yahoo Finance 日线数据 |
 | H3 不确定性与波幅 | **待运行** | 与 H2 同一次运行输出 |
 | H4 领先滞后 | 未开始 | 需要期权数据 |
 | H5 隐含波动贵贱 | 未开始 | 需要期权数据 |
@@ -105,13 +105,18 @@
 
 ## 4. 运行 H2 的前提
 
-1. 网络白名单加入 `api.polygon.io`。当前这个域名仍被拒绝。Polygon 已改名为 Massive，如果你的账户走新域名，加 `api.massive.com` 并设置环境变量 `POLYGON_BASE_URL=https://api.massive.com`。
-2. 在环境设置里配置 API key，变量名为 `POLYGON_API_KEY`。
-3. 免费档每分钟 5 次请求，426 个代码大约要 85 分钟。付费档可以设置 `POLYGON_RPM` 加速。
+股票日线从 Yahoo Finance 取，用 yfinance 库，不需要 API key。价格按拆股调整，不按分红调整。
+
+1. 网络白名单加入下面四个域名。当前它们都被拒绝。
+   - `query1.finance.yahoo.com`
+   - `query2.finance.yahoo.com`
+   - `fc.yahoo.com`
+   - `finance.yahoo.com`
+2. 426 个代码每批 50 个下载，几分钟内完成。数据缓存在 `data/prices/daily/`。
 
 然后运行：
 
 ```bash
-python -m estimate.cli fetch-polygon
+python -m estimate.cli fetch-prices
 python -m estimate.cli h2
 ```

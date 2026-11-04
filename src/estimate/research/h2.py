@@ -32,7 +32,7 @@ def _bars(cache_dir: Path, ticker: str) -> pd.DataFrame | None:
 def add_returns(p: pd.DataFrame, cache_dir: Path) -> pd.DataFrame:
     spy = _bars(cache_dir, "SPY")
     if spy is None:
-        raise RuntimeError(f"no SPY bars in {cache_dir}; run fetch-polygon first")
+        raise RuntimeError(f"no SPY bars in {cache_dir}; run fetch-prices first")
     out = []
     cache: dict[str, pd.DataFrame | None] = {}
     for r in p.itertuples():

@@ -4,7 +4,7 @@
     python -m estimate.cli fetch-poly     # trades + hourly price history per settled market
     python -m estimate.cli panel          # release time, entry point, prediction-market features
     python -m estimate.cli h1             # calibration vs base rates at the proper entry time
-    python -m estimate.cli fetch-polygon  # daily bars for every ticker + SPY (needs POLYGON_API_KEY)
+    python -m estimate.cli fetch-prices   # Yahoo Finance daily bars for every ticker + SPY
     python -m estimate.cli h2             # direction / magnitude tests
 """
 from __future__ import annotations
@@ -23,6 +23,7 @@ from estimate.events import build_events
 from estimate.ingest import polymarket as pm
 
 DATA = Path("data")
+PRICES = DATA / "prices" / "daily"
 
 
 def cmd_events(_):
@@ -79,26 +80,20 @@ def cmd_h1(_):
     report(pd.read_parquet(DATA / "panel.parquet"))
 
 
-def cmd_fetch_polygon(_):
-    from estimate.ingest.polygon import daily_bars
+def cmd_fetch_prices(_):
+    from estimate.ingest.yahoo import fetch_daily
     p = pd.read_parquet(DATA / "panel.parquet").dropna(subset=["entry_date"])
     start = min(p.entry_date) - dt.timedelta(days=10)
     end = min(dt.date.today(), max(p.reaction_date) + dt.timedelta(days=10))
     tickers = ["SPY"] + sorted(set(p.ticker))
     print(f"{len(tickers)} tickers, {start}..{end}")
-    missing = []
-    for i, t in enumerate(tickers, 1):
-        df = daily_bars(t, start, end, DATA / "polygon" / "daily")
-        if df.empty:
-            missing.append(t)
-        if i % 25 == 0:
-            print(f"  {i}/{len(tickers)}", flush=True)
+    missing = fetch_daily(tickers, start, end, PRICES)
     print(f"done; no data for {len(missing)}: {missing[:30]}")
 
 
 def cmd_h2(_):
     from estimate.research.h2 import report
-    report(pd.read_parquet(DATA / "panel.parquet"), DATA / "polygon" / "daily")
+    report(pd.read_parquet(DATA / "panel.parquet"), PRICES)
 
 
 def main(argv=None):
@@ -110,7 +105,7 @@ def main(argv=None):
     f.set_defaults(fn=cmd_fetch_poly)
     sub.add_parser("panel").set_defaults(fn=cmd_panel)
     sub.add_parser("h1").set_defaults(fn=cmd_h1)
-    sub.add_parser("fetch-polygon").set_defaults(fn=cmd_fetch_polygon)
+    sub.add_parser("fetch-prices").set_defaults(fn=cmd_fetch_prices)
     sub.add_parser("h2").set_defaults(fn=cmd_h2)
     args = ap.parse_args(argv)
     args.fn(args)

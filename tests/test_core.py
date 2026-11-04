@@ -42,3 +42,16 @@ def test_trades_frame_signs():
     ])
     assert list(t.signed_usd.round(6)) == [6.0, -4.0, 2.0]
     assert list(t.p_yes.round(6)) == [0.6, 0.6, 0.6]
+
+
+def test_yahoo_symbol_and_split_download():
+    from estimate.ingest.yahoo import split_download, yahoo_symbol
+
+    assert yahoo_symbol("BRK.A") == "BRK-A"
+    idx = pd.to_datetime(["2026-11-02", "2026-11-03"])
+    cols = pd.MultiIndex.from_product([["SPY", "BRK-A"], ["Open", "High", "Low", "Close", "Adj Close", "Volume"]])
+    raw = pd.DataFrame([[1, 2, 0.5, 1.5, 1.4, 10] * 2, [2, 3, 1.5, 2.5, 2.4, 20] * 2], index=idx, columns=cols)
+    out = split_download(raw, ["SPY", "BRK-A", "MISSING"])
+    assert set(out) == {"SPY", "BRK-A"}
+    assert list(out["SPY"].columns) == ["open", "high", "low", "close", "volume"]
+    assert out["BRK-A"].loc["2026-11-03", "close"] == 2.5  # unadjusted-for-dividends Close, not Adj Close
