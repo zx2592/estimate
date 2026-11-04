@@ -9,6 +9,7 @@
     python -m estimate.cli upcoming       # open EPS markets reporting in the next days
     python -m estimate.cli snapshot-options   # IBKR chain snapshot for events entering today (run ~15:45 ET)
     python -m estimate.cli ibkr-vol-history   # IBKR 30-day IV / HV history for every ticker
+    python -m estimate.cli h5             # implied vs realized earnings move from IBKR IV30
     python -m estimate.cli h7             # put-skew test on collected snapshots
 """
 from __future__ import annotations
@@ -147,16 +148,26 @@ def cmd_ibkr_vol_history(args):
     out_dir.mkdir(parents=True, exist_ok=True)
     ib = ibkr.connect(args.host, args.port, args.client_id, args.market_data_type)
     try:
-        for t in tickers:
+        for i, t in enumerate(tickers, 1):
             f = out_dir / f"{t}.parquet"
-            if f.exists():
-                continue
-            try:
-                ibkr.underlying_vol_history(ib, t).to_parquet(f)
-            except Exception as err:  # noqa: BLE001
-                print(f"  {t}: FAILED {err}")
+            if not f.exists():
+                try:
+                    df = ibkr.underlying_vol_history(ib, t)
+                    if len(df):
+                        df.to_parquet(f)
+                    else:
+                        print(f"  {t}: no data")
+                except Exception as err:  # noqa: BLE001
+                    print(f"  {t}: FAILED {err}")
+            if i % 25 == 0:
+                print(f"  {i}/{len(tickers)}", flush=True)
     finally:
         ib.disconnect()
+
+
+def cmd_h5(_):
+    from estimate.research.h5 import report
+    report(pd.read_parquet(DATA / "panel.parquet"), PRICES, DATA / "ibkr" / "vol")
 
 
 def cmd_h7(_):
@@ -195,6 +206,7 @@ def main(argv=None):
     vh = sub.add_parser("ibkr-vol-history")
     _ibkr_args(vh)
     vh.set_defaults(fn=cmd_ibkr_vol_history)
+    sub.add_parser("h5").set_defaults(fn=cmd_h5)
     sub.add_parser("h7").set_defaults(fn=cmd_h7)
     args = ap.parse_args(argv)
     args.fn(args)

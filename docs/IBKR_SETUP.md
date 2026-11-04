@@ -6,21 +6,24 @@ H7 需要在每个财报事件的建仓收盘时点，记录一次期权链快�
 
 ## 1. 安装
 
-```bash
+以下命令以 Windows 的 PowerShell 为例，项目放在 `E:\Coding\Quant\estimate`。Linux 或 macOS 把 `.venv\Scripts\python` 换成 `.venv/bin/python` 即可。
+
+```powershell
+cd E:\Coding\Quant
 git clone https://github.com/zx2592/estimate
 cd estimate
-python3 -m venv .venv
-.venv/bin/pip install -e ".[ibkr,dev]"
-.venv/bin/python -m pytest -q tests
+python -m venv .venv
+.venv\Scripts\python -m pip install -e ".[ibkr,dev]"
+.venv\Scripts\python -m pytest -q tests
 ```
 
-第一次还需要把历史数据拉到本地：
+第一次还需要把历史数据拉到本地，大约 5 分钟：
 
-```bash
-.venv/bin/python -m estimate.cli events
-.venv/bin/python -m estimate.cli fetch-poly
-.venv/bin/python -m estimate.cli panel
-.venv/bin/python -m estimate.cli fetch-prices
+```powershell
+.venv\Scripts\python -m estimate.cli events
+.venv\Scripts\python -m estimate.cli fetch-poly
+.venv\Scripts\python -m estimate.cli panel
+.venv\Scripts\python -m estimate.cli fetch-prices
 ```
 
 ## 2. TWS 或 IB Gateway 设置
@@ -43,7 +46,7 @@ python3 -m venv .venv
 | 15:45，实时行情 | `snapshot-options --market-data-type 1` | 对今天收盘建仓的事件拍期权链快照 |
 | 16:10，延迟行情 | `snapshot-options --market-data-type 4` | 同上，用延迟冻结行情拿到接近收盘的报价 |
 
-先在仓库根目录建一个日志目录：`mkdir -p logs`。下面是 crontab 示例。CRON_TZ 在 Linux 上可用。macOS 自带的 cron 不支持它，需要换算成本地时间，或者改用 launchd。
+先在仓库根目录建一个日志目录：`mkdir -p logs`。Windows 用任务计划程序。任务的触发时间按你电脑的本地时区填写，要换算成美东 15:30 和 15:45。下面是 crontab 示例，适用于 Linux。CRON_TZ 在 Linux 上可用。macOS 自带的 cron 不支持它，需要换算成本地时间，或者改用 launchd。
 
 ```
 CRON_TZ=America/New_York
@@ -67,12 +70,15 @@ CRON_TZ=America/New_York
 .venv/bin/python -m estimate.cli h7
 ```
 
-## 5. 顺带可做：历史隐含波动率
+## 5. H5：用历史隐含波动率检验
 
-IBKR 能提供每只股票过去两年的 30 天隐含波动率和历史波动率日线。后续检验 H5 会用到它：
+IBKR 能提供每只股票过去两年的 30 天隐含波动率日线。这份数据不需要期权行情订阅，可以回看过去所有财报事件。TWS 保持登录，然后运行：
 
-```bash
-.venv/bin/python -m estimate.cli ibkr-vol-history --port 7497
+```powershell
+.venv\Scripts\python -m estimate.cli ibkr-vol-history --port 7497
+.venv\Scripts\python -m estimate.cli h5
 ```
 
-结果存放在 `data/ibkr/vol/`。
+- 第一条命令会下载约 425 只股票的数据，存到 `data/ibkr/vol/`，大约需要 20 到 40 分钟。中断后重跑会跳过已下载的股票。
+- 用 IB Gateway 的话，把端口换成 4002，实盘账户是 4001。
+- 没有上市期权的股票会显示 no data，这是正常的。

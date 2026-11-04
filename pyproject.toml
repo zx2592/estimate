@@ -3,7 +3,7 @@ name = "estimate"
 version = "0.1.0"
 description = "Earnings-season options strategy research driven by prediction-market EPS odds"
 requires-python = ">=3.12"
-dependencies = ["pandas>=2.2", "numpy>=2.0", "scipy>=1.13", "scikit-learn>=1.5", "statsmodels>=0.14", "pyarrow>=16", "yfinance>=0.2.50"]
+dependencies = ["pandas>=2.2", "numpy>=2.0", "scipy>=1.13", "scikit-learn>=1.5", "statsmodels>=0.14", "pyarrow>=16", "yfinance>=0.2.50", "tzdata"]
 
 [project.optional-dependencies]
 ibkr = ["ib_async>=2.0"]

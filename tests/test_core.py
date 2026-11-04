@@ -101,3 +101,16 @@ def test_implied_vol_roundtrip():
 
     px = bs_price(100, 95, 10 / 365, 0.7, "P")
     assert abs(implied_vol(px, 100, 95, 10 / 365, "P") - 0.7) < 1e-6
+
+
+def test_implied_event_move():
+    import math
+
+    from estimate.research.h5 import implied_event_move
+
+    # No elevation -> event day is an ordinary day: sqrt(2/pi) * iv / sqrt(252)
+    assert abs(implied_event_move(0.4, 0.4) - math.sqrt(2 / math.pi) * 0.4 / math.sqrt(252)) < 1e-12
+    # A 5% event-day standard deviation added to a 40% base
+    iv_pre = math.sqrt((20 * 0.4 ** 2 + 252 * 0.05 ** 2) / 21)
+    assert abs(implied_event_move(iv_pre, 0.4) - math.sqrt(2 / math.pi) * 0.05) < 1e-12
+    assert math.isnan(implied_event_move(0.3, 0.5))
